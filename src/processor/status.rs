@@ -1,9 +1,4 @@
-#![allow(unused)]
-
 use crate::processor::Register8;
-
-#[derive(Default)]
-pub struct Status(Register8);
 
 pub const FLAG_NEGATIVE: u8 = 7;
 pub const FLAG_OVERFLOW: u8 = 6;
@@ -14,6 +9,10 @@ pub const FLAG_INTERRUPT_DISABLE: u8 = 2;
 pub const FLAG_ZERO: u8 = 1;
 pub const FLAG_CARRY: u8 = 0;
 
+
+#[derive(Default)]
+pub struct Status(pub(crate) Register8);
+
 impl Status {
     #[inline(always)]
     pub fn get_bit(&self, n: u8) -> bool {
@@ -22,7 +21,7 @@ impl Status {
 
     #[inline(always)]
     pub fn get_bit_u8(&self, n: u8) -> u8 {
-        (self.0 >> n & 1)
+        self.0 >> n & 1
     }
 
     #[inline(always)]

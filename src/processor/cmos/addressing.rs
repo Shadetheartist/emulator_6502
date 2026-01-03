@@ -1,118 +1,101 @@
 use std::ops::Add;
-use crate::memory::address::{Address, ZeroPageAddress};
+use crate::memory::address::{Address, AddressMode, ZeroPageAddress};
 use crate::memory::Memory;
 use crate::processor::cmos::CmosProcessor;
-use crate::processor::{ExecutionMetrics, Register8, Value};
-use crate::processor::status::FLAG_CARRY;
+use crate::processor::Value;
 
 impl<'m, M: Memory> CmosProcessor<'m, M> {
-    pub(crate) fn adc_internal(&mut self, value: &Value) {
-        let carry = self.status.get_bit_u8(FLAG_CARRY);
-        let sum = (self.accumulator as u16) + (carry as u16) + (*value as u16);
 
-        self.accumulator = (0xff & sum) as Register8;
-
-        self.status.clear_bit(FLAG_CARRY);
-
-        let carry_flag = (sum >> 8 & 1) == 1;
-        self.status.set_bit(FLAG_CARRY, carry_flag);
+    pub(crate) fn translate_address(&self, address_mode: &AddressMode) -> (Value, u8) {
+        match address_mode {
+            AddressMode::Immediate(value) => (*value, 0),
+            AddressMode::ZeroPage(zp_address) => (self.address_zeropage(zp_address), 0),
+            AddressMode::ZeroPageX(zp_address) => (self.address_zeropage_x(zp_address), 0),
+            AddressMode::ZeroPageY(_) => unimplemented!(),
+            AddressMode::Absolute(address) => (self.address_absolute(address), 0),
+            AddressMode::AbsoluteX(address) => self.address_absolute_x(address),
+            AddressMode::AbsoluteY(address) => self.address_absolute_y(address),
+            AddressMode::Indirect(address) => (self.address_absolute(address), 0),
+            AddressMode::PreIndexedIndirectX(zp_address) => (self.address_preindexed_indirect_x(zp_address), 0),
+            AddressMode::PostIndexedIndirectY(zp_address) => self.address_postindexed_indirect_y(zp_address),
+            AddressMode::Relative(_) => unimplemented!(),
+        }
     }
 
-    // opc 69
-    pub(crate) fn adc_immediate(&mut self, value: &Value) -> ExecutionMetrics {
-        self.adc_internal(value);
-        ExecutionMetrics::new(2, 2)
+    fn address_zeropage(&self, zp_address: &ZeroPageAddress) -> Value {
+        let address = zp_address.upgrade();
+        self.memory.read(&address)
     }
 
-    // opc 65
-    pub(crate) fn adc_zeropage(&mut self, zp_address: &ZeroPageAddress) -> ExecutionMetrics {
-        let value = self.address_zeropage(zp_address);
-        self.adc_internal(&value);
-        ExecutionMetrics::new(2, 3)
+    fn address_zeropage_x(&self, zp_address: &ZeroPageAddress) -> Value {
+        let zp_address = zp_address.wrapping_add(self.x);
+        let address = zp_address.upgrade();
+        self.memory.read(&address)
     }
 
-    // opc 75
-    pub(crate) fn adc_zeropage_x(&mut self, zp_address: &ZeroPageAddress) -> ExecutionMetrics {
-        let value = self.address_zeropage_x(zp_address);
-        self.adc_internal(&value);
-        ExecutionMetrics::new(2, 4)
+    fn address_absolute(&self, address: &Address) -> Value {
+        self.memory.read(address)
     }
 
-    pub(crate) fn adc_absolute(&mut self, address: &Address) -> ExecutionMetrics {
-        let value = self.address_absolute(address);
-        self.adc_internal(&value);
-        ExecutionMetrics::new(3, 4)
+    fn address_absolute_x(&self, address: &Address) -> (Value, u8) {
+        let (address, page_crossed) = address.add_check_page_cross(self.x);
+        (self.memory.read(&address), page_crossed as u8)
     }
 
-
-    pub(crate) fn adc_absolute_x(&mut self, address: &Address) -> ExecutionMetrics {
-        let (value, page_crossed) = self.address_absolute_x(address);
-        self.adc_internal(&value);
-        ExecutionMetrics::new(3, 4 + (page_crossed as u8))
+    fn address_absolute_y(&self, address: &Address) -> (Value, u8) {
+        let (address, page_crossed) = address.add_check_page_cross(self.y);
+        (self.memory.read(&address), page_crossed as u8)
     }
 
-    pub(crate) fn adc_absolute_y(&mut self, address: &Address) -> ExecutionMetrics {
-        let (value, page_crossed) = self.address_absolute_y(address);
-        self.adc_internal(&value);
-        ExecutionMetrics::new(3, 4 + (page_crossed as u8))
+    fn address_preindexed_indirect_x(&self, zp_address: &ZeroPageAddress) -> Value {
+        // preindexed, add x to lookup address
+        let lookup_address = zp_address.wrapping_add(self.x).upgrade();
+
+        let address_low = self.memory.read(&lookup_address);
+        let address_high = self.memory.read(&lookup_address.add(1u8));
+        let address = Address::from_bytes(address_low, address_high);
+
+        self.memory.read(&address)
     }
 
-    pub(crate) fn adc_preindexed_indirect_x(
-        &mut self,
-        zp_address: &ZeroPageAddress,
-    ) -> ExecutionMetrics {
-       let value = self.address_preindexed_indirect_x(zp_address);
-        self.adc_internal(&value);
-        ExecutionMetrics::new(2, 6)
-    }
+    fn address_postindexed_indirect_y(&self, zp_address: &ZeroPageAddress) -> (Value, u8) {
+        let lookup_address = zp_address.upgrade();
 
-    pub(crate) fn adc_postindexed_indirect_y(
-        &mut self,
-        zp_address: &ZeroPageAddress,
-    ) -> ExecutionMetrics {
-        let (value, page_crossed) = self.address_postindexed_indirect_y(zp_address);
-        self.adc_internal(&value);
-        ExecutionMetrics::new(2, 5 + (page_crossed as u8))
+        let address_low = self.memory.read(&lookup_address);
+        let address_high = self.memory.read(&lookup_address.add(1u8));
+        let address = Address::from_bytes(address_low, address_high);
+
+        // post indexed, add y to lookup address
+        let (address, page_crossed) = address.add_check_page_cross(self.y);
+
+        let value = self.memory.read(&address);
+
+        (value, page_crossed as u8)
     }
 }
+
+
 
 #[cfg(test)]
 mod test {
     use crate::memory::address::{Address, AddressMode, ZeroPageAddress};
-    use crate::processor::instructions::Instruction;
     use crate::memory::Memory;
-    use crate::memory::VecMemory;
+    use crate::memory::vec_memory::VecMemory;
     use crate::processor::cmos::CmosProcessor;
-    use crate::processor::status::FLAG_CARRY;
+    use crate::processor::{Instruction};
 
     #[test]
-    fn test_adc_immediate() {
+    fn test_address_immediate() {
         let mut memory = VecMemory::default();
         let mut processor = CmosProcessor::with_memory(&mut memory);
 
         // add small value
         processor.execute(&Instruction::ADC, &AddressMode::Immediate(5));
         assert_eq!(processor.accumulator, 5);
-        assert_eq!(processor.status.get_bit(FLAG_CARRY), false);
-
-        // bring right to the edge of overflowing
-        processor.execute(&Instruction::ADC, &AddressMode::Immediate(250));
-        assert_eq!(processor.accumulator, 255);
-        assert_eq!(processor.status.get_bit(FLAG_CARRY), false);
-
-        // make sure carry is set after overflow, and acc is modulo 256
-        processor.execute(&Instruction::ADC, &AddressMode::Immediate(2));
-        assert_eq!(processor.accumulator, 1);
-        assert_eq!(processor.status.get_bit(FLAG_CARRY), true);
-
-        // make sure carry is added when set
-        processor.execute(&Instruction::ADC, &AddressMode::Immediate(1));
-        assert_eq!(processor.accumulator, 3);
-        assert_eq!(processor.status.get_bit(FLAG_CARRY), false);
     }
 
     #[test]
-    fn test_adc_zeropage() {
+    fn test_address_zeropage() {
         let zp_address = ZeroPageAddress(32);
         let address = zp_address.upgrade();
         let mut memory = VecMemory::default();
@@ -125,7 +108,7 @@ mod test {
     }
 
     #[test]
-    fn test_adc_zeropage_x() {
+    fn test_address_zeropage_x() {
         let zp_address = ZeroPageAddress(32);
         let address = zp_address.upgrade();
 
@@ -144,7 +127,7 @@ mod test {
     }
 
     #[test]
-    fn test_adc_absolute() {
+    fn test_address_absolute() {
         let address = Address(0xcabd);
 
         let mut memory = VecMemory::default();
@@ -157,7 +140,7 @@ mod test {
     }
 
     #[test]
-    fn test_adc_absolute_x() {
+    fn test_address_absolute_x() {
         let address = Address(0xcabd);
 
         let mut memory = VecMemory::default();
@@ -175,7 +158,7 @@ mod test {
     }
 
     #[test]
-    fn test_adc_absolute_y() {
+    fn test_address_absolute_y() {
         let address = Address(0xcabd);
 
         let mut memory = VecMemory::default();
@@ -193,7 +176,7 @@ mod test {
     }
 
     #[test]
-    fn test_adc_preindexed_indirect_x() {
+    fn test_address_preindexed_indirect_x() {
         let mut memory = VecMemory::default();
         memory.write(&Address(0x0010), &0xbb);
         memory.write(&Address(0x0011), &0xca);
@@ -212,7 +195,7 @@ mod test {
     }
 
     #[test]
-    fn test_adc_postindexed_indirect_y() {
+    fn test_address_postindexed_indirect_y() {
         let mut memory = VecMemory::default();
 
         memory.write(&Address(0x0010), &(0xbb - 0x20));

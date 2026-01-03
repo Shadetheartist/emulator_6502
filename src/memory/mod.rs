@@ -1,8 +1,7 @@
-pub use vec_memory::VecMemory;
 use address::Address;
 use crate::processor::Value;
 
-mod vec_memory;
+pub mod vec_memory;
 pub mod address;
 
 pub trait Memory {
