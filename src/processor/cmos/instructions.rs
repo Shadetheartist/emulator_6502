@@ -5,6 +5,20 @@ use crate::processor::status::{FLAG_CARRY, FLAG_NEGATIVE, FLAG_OVERFLOW, FLAG_ZE
 use crate::processor::{get_bit, Register8};
 
 impl<'m, M: Memory> CmosProcessor<'m, M> {
+
+    #[inline(always)]
+    fn set_zero_flag(&mut self){
+        self.status.clear_bit(FLAG_ZERO);
+        self.status.set_bit(FLAG_ZERO, self.accumulator == 0);
+    }
+
+    #[inline(always)]
+    fn set_negative_flag(&mut self){
+        let negative_flag = get_bit(self.accumulator, 7);
+        self.status.clear_bit(FLAG_NEGATIVE);
+        self.status.set_bit(FLAG_NEGATIVE, negative_flag);
+    }
+
     // implemented as instructed from
     // https://www.xjavascript.com/blog/6502-emulation-proper-way-to-implement-adc-and-sbc
     pub(crate) fn execute_adc(&mut self, address_mode: &AddressMode) -> u8 {
@@ -30,12 +44,8 @@ impl<'m, M: Memory> CmosProcessor<'m, M> {
         self.status.clear_bit(FLAG_OVERFLOW);
         self.status.set_bit(FLAG_OVERFLOW, overflow == 1);
 
-        self.status.clear_bit(FLAG_ZERO);
-        self.status.set_bit(FLAG_ZERO, self.accumulator == 0);
-
-        let negative_flag = get_bit(sum, 7);
-        self.status.clear_bit(FLAG_NEGATIVE);
-        self.status.set_bit(FLAG_NEGATIVE, negative_flag);
+        self.set_zero_flag();
+        self.set_negative_flag();
 
         additional_cycles
     }
@@ -45,6 +55,9 @@ impl<'m, M: Memory> CmosProcessor<'m, M> {
 
         self.accumulator &= value;
 
+        self.set_zero_flag();
+        self.set_negative_flag();
+
         additional_cycles
     }
 
@@ -52,6 +65,10 @@ impl<'m, M: Memory> CmosProcessor<'m, M> {
         match address_mode {
             AddressMode::Implied => {
                 self.accumulator = self.accumulator << 1;
+
+                self.set_zero_flag();
+                self.set_negative_flag();
+
                 0
             }
             _ => {
@@ -64,6 +81,9 @@ impl<'m, M: Memory> CmosProcessor<'m, M> {
                 value = value << 1;
 
                 self.memory.write(&address, &value);
+
+                self.set_zero_flag();
+                self.set_negative_flag();
 
                 additional_cycles
             }
@@ -145,6 +165,33 @@ mod test {
 
         processor.execute(&Instruction::AND, &AddressMode::Immediate(0b1010));
         assert_eq!(processor.accumulator, 0b1000);
+        assert_eq!(processor.status.get_bit(FLAG_ZERO), false);
+        assert_eq!(processor.status.get_bit(FLAG_NEGATIVE), false);
 
+    }
+
+    #[test]
+    fn test_asl() {
+        let mut memory = VecMemory::default();
+        let mut processor = CmosProcessor::with_memory(&mut memory);
+        processor.accumulator = 0b00110000;
+
+        processor.execute(&Instruction::ASL, &AddressMode::Implied);
+        assert_eq!(processor.accumulator, 0b01100000);
+        assert_eq!(processor.status.get_bit(FLAG_ZERO), false);
+        assert_eq!(processor.status.get_bit(FLAG_NEGATIVE), false);
+
+        processor.execute(&Instruction::ASL, &AddressMode::Implied);
+        assert_eq!(processor.accumulator, 0b11000000);
+
+        assert_eq!(processor.status.get_bit(FLAG_ZERO), false);
+        assert_eq!(processor.status.get_bit(FLAG_NEGATIVE), true);
+
+        processor.execute(&Instruction::ASL, &AddressMode::Implied);
+        processor.execute(&Instruction::ASL, &AddressMode::Implied);
+
+        assert_eq!(processor.accumulator, 0b00000000);
+        assert_eq!(processor.status.get_bit(FLAG_ZERO), true);
+        assert_eq!(processor.status.get_bit(FLAG_NEGATIVE), false);
     }
 }
