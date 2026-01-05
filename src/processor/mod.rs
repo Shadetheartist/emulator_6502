@@ -1,6 +1,6 @@
 pub mod cmos;
-mod status;
 mod instructions;
+mod status;
 
 pub use instructions::Instruction;
 
@@ -22,4 +22,10 @@ impl ExecutionMetrics {
             cycles,
         }
     }
+}
+
+#[inline(always)]
+fn get_bit<T: num_traits::PrimInt>(value: T, bit: usize) -> bool
+{
+    (value >> bit) & T::one() == T::one()
 }
