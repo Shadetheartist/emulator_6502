@@ -46,6 +46,7 @@ impl Add<u8> for Address {
 
 #[derive(Debug, Clone, Copy)]
 pub enum AddressMode {
+    Implied,
     Immediate(Value),
     ZeroPage(ZeroPageAddress),
     ZeroPageX(ZeroPageAddress),

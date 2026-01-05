@@ -14,7 +14,7 @@ pub struct CmosProcessor<'m, M: Memory> {
     pub(crate) y: Register8,
     pub(crate) status: Status,
     pub(crate) stack_pointer: Register8,
-    pub(crate) memory: &'m M,
+    pub(crate) memory: &'m mut M,
     pub(crate) cycles: u64,
 }
 
@@ -39,12 +39,11 @@ impl<'m, M: Memory> CmosProcessor<'m, M> {
             panic!("Instruction does not have a definition for address mode {:?}", address_mode);
         };
 
-        let (value, additional_cycles) = self.translate_address(address_mode);
 
-        match instruction {
-            Instruction::ADC => self.execute_adc(&value),
-            Instruction::AND => self.execute_and(&value),
-            Instruction::ASL => unimplemented!(),
+        let additional_cycles = match instruction {
+            Instruction::ADC => self.execute_adc(address_mode),
+            Instruction::AND => self.execute_and(address_mode),
+            Instruction::ASL => self.execute_asl(address_mode),
             Instruction::BCC => unimplemented!(),
             Instruction::BCS => unimplemented!(),
             Instruction::BEQ => unimplemented!(),
@@ -98,7 +97,7 @@ impl<'m, M: Memory> CmosProcessor<'m, M> {
             Instruction::TXA => unimplemented!(),
             Instruction::TXS => unimplemented!(),
             Instruction::TYA => unimplemented!(),
-        }
+        };
 
         self.program_counter += execution_metrics.bytes as u16;
         self.cycles += (execution_metrics.cycles + additional_cycles) as u64;

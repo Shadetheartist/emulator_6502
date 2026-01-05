@@ -34,6 +34,8 @@ impl Status {
         self.set_bit(n, true)
     }
 
+    // must be cleared first to work
+    #[inline(always)]
     pub fn set_bit(&mut self, n: u8, value: bool) {
         self.0 = self.0 | ((value as u8) << n);
     }

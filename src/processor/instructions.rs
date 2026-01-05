@@ -65,21 +65,36 @@ pub enum Instruction {
 impl Instruction {
     pub(crate) fn execution_metrics(&self, address_mode: &AddressMode) -> Option<ExecutionMetrics> {
         match self {
-            Instruction::AND |
             Instruction::ADC => match address_mode {
                 AddressMode::Immediate(_) => Some(ExecutionMetrics::new(0x69, 2, 2)),
                 AddressMode::ZeroPage(_) => Some(ExecutionMetrics::new(0x65, 2, 3)),
                 AddressMode::ZeroPageX(_) => Some(ExecutionMetrics::new(0x75, 2, 4)),
-                AddressMode::ZeroPageY(_) => None,
                 AddressMode::Absolute(_) => Some(ExecutionMetrics::new(0x6d, 3, 4)),
                 AddressMode::AbsoluteX(_) => Some(ExecutionMetrics::new(0x7d, 3, 4)),
                 AddressMode::AbsoluteY(_) => Some(ExecutionMetrics::new(0x79, 3, 4)),
-                AddressMode::Indirect(_) => None,
                 AddressMode::PreIndexedIndirectX(_) => Some(ExecutionMetrics::new(0x61, 2, 6)),
                 AddressMode::PostIndexedIndirectY(_) => Some(ExecutionMetrics::new(0x71, 2, 5)),
-                AddressMode::Relative(_) => None,
+                _ => None,
             }
-            Instruction::ASL => unimplemented!(),
+            Instruction::AND => match address_mode {
+                AddressMode::Immediate(_) => Some(ExecutionMetrics::new(0x29, 2, 2)),
+                AddressMode::ZeroPage(_) => Some(ExecutionMetrics::new(0x25, 2, 3)),
+                AddressMode::ZeroPageX(_) => Some(ExecutionMetrics::new(0x35, 2, 4)),
+                AddressMode::Absolute(_) => Some(ExecutionMetrics::new(0x2D, 3, 4)),
+                AddressMode::AbsoluteX(_) => Some(ExecutionMetrics::new(0x3D, 3, 4)),
+                AddressMode::AbsoluteY(_) => Some(ExecutionMetrics::new(0x39, 3, 4)),
+                AddressMode::PreIndexedIndirectX(_) => Some(ExecutionMetrics::new(0x21, 2, 6)),
+                AddressMode::PostIndexedIndirectY(_) => Some(ExecutionMetrics::new(0x31, 2, 5)),
+                _ => None,
+            }
+            Instruction::ASL => match address_mode {
+                AddressMode::Implied => Some(ExecutionMetrics::new(0x0A, 1, 2)),
+                AddressMode::ZeroPage(_) => Some(ExecutionMetrics::new(0x06, 2, 5)),
+                AddressMode::ZeroPageX(_) => Some(ExecutionMetrics::new(0x16, 2, 6)),
+                AddressMode::Absolute(_) => Some(ExecutionMetrics::new(0x0E, 3, 6)),
+                AddressMode::AbsoluteX(_) => Some(ExecutionMetrics::new(0x3D, 3, 4)),
+                _ => None,
+            },
             Instruction::BCC => unimplemented!(),
             Instruction::BCS => unimplemented!(),
             Instruction::BEQ => unimplemented!(),
